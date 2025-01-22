@@ -8,6 +8,11 @@
 # Most methods return a boolean that is true if there is an error.
 #
 # Written by swordstrike1.
+# 
+# Downloaded from https://github.com/arceryz/ATlib subsequently tweaked by Tom Cooper to 
+# work with the Wavesure SIM7600E-H hat on a Pi https://www.waveshare.com/wiki/SIM7600E-H_4G_HAT 
+# There are some very minor textual differences in responses which took a while to figure out.
+# The bulk of the work was done by swordstrike1 - many thanks.
 
 from serial import *
 from time import *
@@ -44,14 +49,12 @@ class AT_Device:
         """ Close AT device. """
         self.serial.close()
 
-
     def write(self, cmd):
         """ Write a single line to the serial port. """
         encoded = (cmd + "\r\n").encode()
         self.serial.write(encoded)
         print("WRITE:", cmd)
         return Status.OK
-
 
     def write_ctrlz(self):
         """ Write the terminating CTRL-Z to end a prompt. """
@@ -244,20 +247,28 @@ class GSM_Device(AT_Device):
         self.write("AT+CMGL=\"{:s}\"".format(group))
         resp = self.read()
         if resp[-1] != Status.OK: return resp[-1]
+        
+        table = []
+
+        if len(resp) == 2:
+            # all we have is the ['AT+CMGL="REC UNREAD"', 'OK'] so there are no unread messages
+            # return an empty table
+            print("No unread messages on SIM.")
+            return table
 
         # TotalElements = 2 + 2 * TotalMessages.
         # First and last elements are echo/result.
-        table = []
-        for i in range(1, len(resp) - 1, 2):
+        
+        for i in range(1, len(resp) - 2, 2):
             header = resp[i].split(",")
             message = resp[i + 1]
-          
             # Extract elements and strip garbage.
             sender = header[2].replace("\"", "")
             date = header[4].replace("\"", "")
             time = header[5].split("+")[0]
             el = [sender, date, time, message]
             table.append(el)
+        
         return table
 
 
