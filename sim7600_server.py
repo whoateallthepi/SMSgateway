@@ -72,7 +72,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(('SMSgateway.py: ' + version))
 
-breakpoint()
 if args.debug:
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
@@ -80,7 +79,7 @@ if args.debug:
     formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
     console_handler.setFormatter(formatter)
     logging.getLogger('').addHandler(console_handler)
-    logger.addHandler(console_handler)
+    #logger.addHandler(console_handler)
     logger.debug('Running in debug mode')
     
 logger.info('Starting')
@@ -95,8 +94,6 @@ except Exception as error:
     logger.error('failed to access message log {} with error {}'.format(args.message_log_file, error))    
 
 debug = args.debug
-
-#breakpoint()
 
 
 def initialise():
@@ -163,17 +160,18 @@ def messages_to_send (q, send_event):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((sms_params['listen'], int(sms_params['port'])))
     server_socket.listen(1)
-    print('T1: Server listening on {}:{}'.format(sms_params['listen'], sms_params['port']))
+    logger.info('Server listening on {}:{}'.format(sms_params['listen'], sms_params['port']))
     while True:
         logger.info('Waiting....')
         client_socket, addr = server_socket.accept()
         
         try: 
-            print(f'T1: Connection from {addr}')
+            logger.info('Connection from {}'.format(addr))
             ## Receive data from the client
             data = client_socket.recv(1024)
             data_dict = json.loads(data.decode())
-            print(f'T1: Received: {data_dict}')
+            logger.info('Received'.format(data_dict))
+
             for m in data_dict['messages']:
                 q.put(m)
              
@@ -185,7 +183,7 @@ def messages_to_send (q, send_event):
             response_data = json.dumps(response_dict).encode()
             client_socket.sendall(response_data)
         except Exception as e:
-            print("T1 exception {} - ignoring for now".format(e))
+            logger.error("Exception receiving data {} - ignoring for now".format(e))
         finally:
             client_socket.close()
 
@@ -193,18 +191,18 @@ def messages_to_send (q, send_event):
 def process_messages(qsend, qreceived, received_event, send_event):
     gsm = GSM_Device("/dev/ttyAMA0")
     while True:
-        print("T2: waiting for messages")
+        logger.info("Waiting for messages")
         if send_event.wait(timeout=5):
             send_event.clear()
             while not qsend.empty():
                 entry = qsend.get()
-                print("\nT2: Processing queue entry. {}".format(entry))
+                logger.info('Sending queue entry {}'.format(entry))
                 send(gsm, entry)
 
         # check for any incoming SMSs
         incoming = gsm.receive_sms()
 
-        print("T2: incoming messages: {}".format(incoming))
+        logger.info('Incoming SMS message(s) {}'.format(incoming))
         for i in incoming:
             qreceived.put(i)
             try:
@@ -228,7 +226,7 @@ def process_received_SMS(q, message_available):
 
     while True:
         while not message_available.wait(timeout=10):
-            print("T3: Waiting for messages")
+            logger.info("T3: Waiting for messages")
         
         if message_available:
             message_available.clear()
@@ -236,7 +234,7 @@ def process_received_SMS(q, message_available):
         while not q.empty():
             
             message = q.get()
-            print("T3: SMS received: {}".format(message))
+            logger.info("T3: SMS received: {}".format(message))
 
             try:
                 r = requests.post(api_params['url'],

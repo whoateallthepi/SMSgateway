@@ -17,6 +17,10 @@
 from serial import *
 from time import *
 
+import logging
+
+log = logging.getLogger(__name__)
+log.addHandler(logging.NullHandler())
 
 class SMS_Group:
     UNREAD = "REC UNREAD"
@@ -42,8 +46,7 @@ class AT_Device:
     def __init__(self, path, baudrate=115200):
         """ Open AT device. Nothing else."""
         self.serial = Serial(path, timeout=0.5, baudrate=baudrate)
-        print("AT serial device opened at {:s}".format(path))
-
+        log.debug("AT serial device opened at {:s}".format(path))
     
     def __del__(self):
         """ Close AT device. """
@@ -53,13 +56,13 @@ class AT_Device:
         """ Write a single line to the serial port. """
         encoded = (cmd + "\r\n").encode()
         self.serial.write(encoded)
-        print("WRITE:", cmd)
+        log.debug("WRITE: {}".format(cmd))
         return Status.OK
 
     def write_ctrlz(self):
         """ Write the terminating CTRL-Z to end a prompt. """
         self.serial.write(bytes([26]))
-        print("WRITE: Ctrl-Z")
+        log.debug("WRITE: Ctrl-Z")
         return Status.OK
 
 
@@ -107,16 +110,16 @@ class AT_Device:
                 try:
                     resp += self.serial.read(avail).decode("utf-8")
                 except:
-                    print("READ:", resp)
+                    log.debug("READ: {}".format(resp))
                     return [ resp, Status.ERROR ] 
                 if AT_Device.has_terminator(resp, stopterm):
-                    print("READ:", resp)
+                    log.debug("READ: {}".format(resp))
                     table = AT_Device.tokenize_response(resp)
                     return table
 
             if time() - start_time > timeout:
+                log.debug("READ: {}".format(resp))
                 return [ resp, Status.TIMEOUT ]
-                print("READ:", resp)
             sleep(delay)
 
 
@@ -124,26 +127,26 @@ class AT_Device:
         """ Returns status of latest response. """
         status = self.read()[-1]
         if status != Status.OK and status != Status.PROMPT:
-            print("{:s}: {:s}".format(status, msg))
+            log.debug("Status:{:s}: {:s}".format(status, msg))
         return status
 
 
     def sync_baudrate(self, retry=True):
         """ Synchronize the device baudrate to the port. 
         You should always call this first. Returns status."""
-        print("Performing baudrate sync, retry={:s}".format(str(retry)))
+        log.debug("Performing baudrate sync, retry={:s}".format(str(retry)))
         # Write AT and test whether received OK response.
         # A broken serial port will not reply.
         while True:
             self.write("AT")
             status = self.read(timeout=5)[-1]
             if status == Status.OK:
-                print("Succesful")
+                log.debug("Sync sucuccesful")
                 return status
             elif retry:
-                print("-> Retrying")
+                log.debug("-> Retrying sync")
             else:
-                print("Failure")
+                log.debug("Failure to sync baudrate")
 
 
     def reset_state(self):
@@ -166,7 +169,7 @@ class GSM_Device(AT_Device):
 
     def __init__(self, path):
         """ Open GSM Device. Device sim still needs to be unlocked. """
-        print("Opening GSM device")
+        log.debug("Opening GSM device")
         super().__init__(path)
         while self.sync_baudrate() != Status.OK:
             sleep(1)
@@ -174,7 +177,7 @@ class GSM_Device(AT_Device):
 
     def reboot(self):
         """ Reboot the GSM device. Returns status. """
-        print("Rebooting GSM device")
+        log.debug("Rebooting GSM device")
         self.write("AT+CFUN=1,1")
         return self.read_status("Rebooting")
 
@@ -197,15 +200,15 @@ class GSM_Device(AT_Device):
         if self.get_sim_status() == Status.OK: return Status.OK
 
         # Unlock sim.
-        print("Trying SIM pin={:s}".format(pin))
+        log.debug("Trying SIM pin={:s}".format(pin))
         self.write("AT+CPIN={:s}".format(pin))
         status = self.read_status("Setting pin")
         if status != Status.OK: return status
 
         # Wait until unlocked.
-        print("Awaiting SMS ready status")
+        log.debug("Awaiting SMS ready status")
         self.read(stopterm="SMS Ready")
-        print("Sim unlocked")
+        log.debug("Sim unlocked")
         return Status.OK
 
 
@@ -214,7 +217,7 @@ class GSM_Device(AT_Device):
         Returns status."""
         self.reset_state()
         # Set text mode.
-        print("Sending \"{:s}\" to {:s}.".format(msg, nr))
+        log.debug("Sending \"{:s}\" to {:s}.".format(msg, nr))
         self.write("AT+CMGF=1")
         status = self.read_status("Text mode")
         
@@ -230,7 +233,7 @@ class GSM_Device(AT_Device):
         self.write_ctrlz()
         status = self.read_status("Sending message")
 
-        print("Message sent.")
+        log.debug("Message sent.")
         return status
 
 
@@ -238,7 +241,7 @@ class GSM_Device(AT_Device):
         """ Receive text messages. See types of message from SMS_Group class. """
         self.reset_state()
         # Read unread. After reading they will not show up here anymore!
-        print("Scanning {:s} messages...".format(group))
+        log.debug("Scanning {:s} messages...".format(group))
         self.write("AT+CMGF=1")
         status = self.read_status("Text mode")
         if status != Status.OK: return status
@@ -253,7 +256,7 @@ class GSM_Device(AT_Device):
         if len(resp) == 2:
             # all we have is the ['AT+CMGL="REC UNREAD"', 'OK'] so there are no unread messages
             # return an empty table
-            print("No unread messages on SIM.")
+            log.debug("No unread messages on SIM.")
             return table
 
         # TotalElements = 2 + 2 * TotalMessages.
