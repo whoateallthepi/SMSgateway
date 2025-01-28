@@ -70,7 +70,7 @@ logging.basicConfig(
     filename=args.log_file,
     level=numeric_level)
 
-logger = logging.getLogger(('SMSgateway.py: ' + version))
+logger = logging.getLogger('SMSgateway')
 
 if args.debug:
     console_handler = logging.StreamHandler()
@@ -82,7 +82,7 @@ if args.debug:
     #logger.addHandler(console_handler)
     logger.debug('Running in debug mode')
     
-logger.info('Starting')
+logger.info('Version {} starting'.format(version))
 
 logger.info('configuring message log')
 
@@ -95,8 +95,7 @@ except Exception as error:
 
 debug = args.debug
 
-
-def initialise():
+def main():
     '''
     Establish the shared Queue object and start the threads
     '''
@@ -226,7 +225,7 @@ def process_received_SMS(q, message_available):
 
     while True:
         while not message_available.wait(timeout=10):
-            logger.info("T3: Waiting for messages")
+            logger.info("Waiting for messages")
         
         if message_available:
             message_available.clear()
@@ -234,7 +233,7 @@ def process_received_SMS(q, message_available):
         while not q.empty():
             
             message = q.get()
-            logger.info("T3: SMS received: {}".format(message))
+            logger.info("SMS received: {}".format(message))
 
             try:
                 r = requests.post(api_params['url'],
@@ -248,9 +247,7 @@ def process_received_SMS(q, message_available):
             except Exception as error:
                 logger.error('Failed to write to {} with error {}'.
                              format(api_params['url'], error))
-                print('Failed to write to {} with error {}'.
-                      format(api_params['url'], error))
 
 if __name__ == "__main__":
 
-    sys.exit(initialise())
+    sys.exit(main())
